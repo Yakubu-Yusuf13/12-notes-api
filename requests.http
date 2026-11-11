@@ -1,0 +1,149 @@
+@baseUrl = http://localhost:3000/api
+@email = notes-demo@example.com
+@password = NotesPassword123!
+@otherEmail = notes-other@example.com
+@otherPassword = OtherNotesPassword123!
+@expiredToken = REPLACE_WITH_LOCALLY_GENERATED_EXPIRED_TOKEN
+
+### Register the primary user (use a unique email on repeated runs)
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Notes Demo",
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Login (captures the token for subsequent requests)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Current user
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{login.response.body.token}}
+
+### List notes with optional filters and pagination
+GET {{baseUrl}}/notes?q=project&tag=work&pinned=false&page=1&limit=20
+Authorization: Bearer {{login.response.body.token}}
+
+### Create a note
+# @name createNote
+POST {{baseUrl}}/notes
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "REST Client test note",
+  "body": "Created using requests.http",
+  "tags": ["work", "demo"],
+  "pinned": false
+}
+
+### Get a note
+GET {{baseUrl}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+### Update a note
+PATCH {{baseUrl}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Updated REST Client note",
+  "pinned": true
+}
+
+### Delete a note
+DELETE {{baseUrl}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+### Failure: missing bearer token
+GET {{baseUrl}}/notes
+
+### Failure: garbled bearer token
+GET {{baseUrl}}/notes
+Authorization: Bearer not-a-jwt
+
+### Failure: expired bearer token
+# Generate one locally with:
+# node --env-file=.env -e "console.log(require('jsonwebtoken').sign({sub:'00000000-0000-0000-0000-000000000001'}, process.env.JWT_SECRET, {algorithm:'HS256', expiresIn:-1}))"
+# Paste the output into @expiredToken above. Never share your JWT_SECRET.
+GET {{baseUrl}}/notes
+Authorization: Bearer {{expiredToken}}
+
+### Failure: invalid note body (title is required)
+POST {{baseUrl}}/notes
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": ""
+}
+
+### Failure: invalid note ID
+GET {{baseUrl}}/notes/not-a-uuid
+Authorization: Bearer {{login.response.body.token}}
+
+### Failure: empty patch
+PATCH {{baseUrl}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{}
+
+### Register another user (use a unique email on repeated runs)
+# @name registerOther
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Other Notes User",
+  "email": "{{otherEmail}}",
+  "password": "{{otherPassword}}"
+}
+
+### Login as the other user
+# @name otherLogin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{otherEmail}}",
+  "password": "{{otherPassword}}"
+}
+
+### Create a note owned by the other user
+# @name createOtherUserNote
+POST {{baseUrl}}/notes
+Authorization: Bearer {{otherLogin.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Private to the other user",
+  "body": "Requests by the primary user should return 404."
+}
+
+### Failure: another user's note is indistinguishable from a missing note (404)
+GET {{baseUrl}}/notes/{{createOtherUserNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+### Failure: another user's note cannot be updated (404)
+PATCH {{baseUrl}}/notes/{{createOtherUserNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Attempted cross-user update"
+}
+
+### Failure: another user's note cannot be deleted (404)
+DELETE {{baseUrl}}/notes/{{createOtherUserNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
